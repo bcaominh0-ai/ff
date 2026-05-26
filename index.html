@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>科研打卡站｜Supabase 在线版</title>
+  <title>双人科研打卡站｜Supabase 在线版</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     :root {
@@ -101,7 +101,7 @@
       <div class="hero-card">
         <h1>双人科研打卡站</h1>
         <p class="subtitle">
-          飞飞和zz的科研小屋
+          Supabase 在线共享版：两位大模型方向博士生用各自邮箱登录，加入同一个科研搭子空间后，上午、下午、晚上打卡会同步到云端。重点记录产出、卡点、下一步，而不是单纯卷时长。
         </p>
         <div class="status-line">
           <span class="tag" id="connectionTag">未连接 Supabase</span>
@@ -120,7 +120,7 @@
   <main>
     <section class="card">
       <h2>在线同步设置</h2>
-      <div id="globalNotice" class="notice">请先在 Supabase 运行建表 SQL，然后填入 Project URL 和 anon public key。</div>
+      <div id="globalNotice" class="notice">请先在 Supabase 运行建表 SQL，然后填入 Project URL 和 anon public key。本版本使用邮箱密码登录，不依赖 Magic Link 邮件。</div>
       <div class="auth-grid">
         <div class="mini-card">
           <h3>1. Supabase 配置</h3>
@@ -140,15 +140,21 @@
         </div>
 
         <div class="mini-card">
-          <h3>2. 邮箱登录</h3>
-          <label>邮箱
-            <input id="loginEmail" type="email" placeholder="your@email.com" />
-          </label>
+          <h3>2. 邮箱密码登录</h3>
+          <div class="form-grid">
+            <label class="full">邮箱
+              <input id="loginEmail" type="email" placeholder="your@email.com" autocomplete="email" />
+            </label>
+            <label class="full">密码
+              <input id="loginPassword" type="password" placeholder="至少 6 位密码" autocomplete="current-password" />
+            </label>
+          </div>
           <div class="buttons">
-            <button class="btn-primary" id="sendLogin" type="button">发送登录链接</button>
+            <button class="btn-primary" id="loginPasswordBtn" type="button">登录</button>
+            <button class="btn-good" id="signupPasswordBtn" type="button">注册</button>
             <button class="btn-soft" id="logout" type="button">退出登录</button>
           </div>
-          <p id="userInfo">当前未登录。部署到 GitHub Pages / Vercel 后，请把网页地址加入 Supabase Auth Redirect URLs。</p>
+          <p id="userInfo">当前未登录。这个版本不依赖邮箱 Magic Link；如果注册后提示需要确认邮箱，请在 Supabase 关闭 Confirm email，或在后台手动创建已确认用户。</p>
         </div>
 
         <div class="mini-card">
@@ -663,23 +669,53 @@
       location.reload();
     });
 
-    $("sendLogin").addEventListener("click", async () => {
+    function getEmailPassword() {
+      const email = $("loginEmail").value.trim();
+      const password = $("loginPassword").value;
       if (!supa) {
         alert("请先保存 Supabase 配置。");
-        return;
+        return null;
       }
-      const email = $("loginEmail").value.trim();
       if (!email) {
         alert("请填写邮箱。");
-        return;
+        return null;
       }
-      const redirectTo = window.location.href.split("#")[0].split("?")[0];
-      const { error } = await supa.auth.signInWithOtp({ email, options: { emailRedirectTo: redirectTo } });
+      if (!password || password.length < 6) {
+        alert("请填写至少 6 位密码。");
+        return null;
+      }
+      return { email, password };
+    }
+
+    $("loginPasswordBtn").addEventListener("click", async () => {
+      const form = getEmailPassword();
+      if (!form) return;
+      const { data, error } = await supa.auth.signInWithPassword(form);
       if (error) {
-        alert("发送失败：" + error.message);
+        alert("登录失败：" + error.message);
         return;
       }
-      setNotice("登录链接已发送，请打开邮箱完成登录。", true);
+      currentUser = data.user || null;
+      await refreshAuthState();
+      if (activePair) await loadRecords();
+      setNotice("登录成功。", true);
+    });
+
+    $("signupPasswordBtn").addEventListener("click", async () => {
+      const form = getEmailPassword();
+      if (!form) return;
+      const { data, error } = await supa.auth.signUp(form);
+      if (error) {
+        alert("注册失败：" + error.message);
+        return;
+      }
+      currentUser = data.user || null;
+      await refreshAuthState();
+      if (data.session) {
+        setNotice("注册并登录成功。", true);
+      } else {
+        setNotice("注册成功，但当前 Supabase 项目可能开启了邮箱确认。请在 Authentication 设置中关闭 Confirm email，或在后台手动确认该用户。", false);
+      }
     });
 
     $("logout").addEventListener("click", async () => {
